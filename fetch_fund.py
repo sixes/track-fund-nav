@@ -219,36 +219,70 @@ def band_step(change: float) -> int:
     return -math.floor(-change / BAND)
 
 
-def build_email(alerts: list) -> tuple:
-    subject_bits = [f"{a['name']} {a['change'] * 100:+.1f}%" for a in alerts]
-    subject = "Fund NAV update: " + ", ".join(subject_bits)
+def build_email(all_funds: list, alerts: list) -> tuple:
+    today = datetime.now().strftime("%Y-%m-%d")
+    alert_ids = {a["fund_id"] for a in alerts}
 
-    text_lines = ["Hi,", "", "Heads up on the funds you're tracking:", ""]
-    for a in alerts:
+    if alerts:
+        subject = f"Fund NAV {today} - ALERT"
+    else:
+        subject = f"Fund NAV {today}"
+
+    # Plain-text fallback
+    text_lines = [f"Fund NAV {today}", ""]
+    if alerts:
+        text_lines.append("!! ALERT: 5% band crossed !!")
+        for a in alerts:
+            text_lines.append(
+                f"  {a['name']}: {a['change'] * 100:+.2f}%, "
+                f"crossed {a['prev_band_pct']}% -> {a['band_pct']}% band"
+            )
+        text_lines.append("")
+    text_lines.append("All funds:")
+    for f in all_funds:
         text_lines.append(
-            f"- {a['name']} ({a['fund_id']}): {a['change'] * 100:+.2f}% vs base "
-            f"(NAV {a['nav']} / base {a['base']}), crossed into {a['band_pct']}% band "
-            f"from {a['prev_band_pct']}%. NAV date: {a['nav_date']}"
+            f"  {f['name']} ({f['fund_id']}): NAV {f['nav']}  "
+            f"change {f['change'] * 100:+.2f}%  band {f['band_pct']}%  "
+            f"date {f['nav_date']}"
         )
-    text_lines += ["", "No further alerts until the next 5% band is crossed.", "", "Fund watcher"]
     text_body = "\n".join(text_lines)
 
+    # HTML
+    alert_banner = ""
+    if alerts:
+        alert_items = "".join(
+            f"<li><b>{a['name']}</b> crossed into <b>{a['band_pct']}%</b> band "
+            f"(was {a['prev_band_pct']}%) &mdash; now {a['change'] * 100:+.2f}% vs base</li>"
+            for a in alerts
+        )
+        alert_banner = (
+            "<div style=\"background:#fff3cd;border:1px solid #ffc107;border-radius:6px;"
+            "padding:12px 16px;margin-bottom:16px;\">"
+            "<p style=\"margin:0 0 6px;font-weight:700;color:#856404;font-size:15px;\">"
+            "&#9888; 5% Band Crossed</p>"
+            f"<ul style=\"margin:0;padding-left:20px;color:#856404;\">{alert_items}</ul>"
+            "</div>"
+        )
+
     rows = []
-    for a in alerts:
-        pct = a["change"] * 100
+    for f in all_funds:
+        pct = f["change"] * 100
         color = "#137333" if pct >= 0 else "#c5221f"
         arrow = "&#9650;" if pct >= 0 else "&#9660;"
-        band_cell = f"{a['prev_band_pct']}% &rarr; {a['band_pct']}%"
+        is_alert = f["fund_id"] in alert_ids
+        bg = "background:#fff8e1;" if is_alert else ""
+        alert_badge = " &#9888;" if is_alert else ""
         rows.append(
-            "<tr>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\"><b>{a['name']}</b>"
-            f"<div style=\"color:#666;font-size:12px;\">{a['fund_id']}</div></td>"
+            f"<tr style=\"{bg}\">"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\"><b>{f['name']}</b>"
+            f"{alert_badge}"
+            f"<div style=\"color:#666;font-size:12px;\">{f['fund_id']}</div></td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:{color};"
             f"font-weight:600;white-space:nowrap;\">{arrow} {pct:+.2f}%</td>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{a['nav']}</td>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{a['base']}</td>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{band_cell}</td>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{a['nav_date']}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{f['nav']}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{f['base']}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{f['band_pct']}%</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{f['nav_date']}</td>"
             "</tr>"
         )
 
@@ -259,7 +293,7 @@ def build_email(alerts: list) -> tuple:
         "<th style=\"padding:8px 12px;\">Change vs base</th>"
         "<th style=\"padding:8px 12px;\">Latest NAV</th>"
         "<th style=\"padding:8px 12px;\">Base</th>"
-        "<th style=\"padding:8px 12px;\">Band crossed</th>"
+        "<th style=\"padding:8px 12px;\">Band</th>"
         "<th style=\"padding:8px 12px;\">NAV date</th>"
         "</tr>"
     )
@@ -267,14 +301,11 @@ def build_email(alerts: list) -> tuple:
     html_body = (
         "<!doctype html><html><body style=\"font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;"
         "color:#222;font-size:14px;line-height:1.5;\">"
-        "<p>Hi,</p>"
-        f"<p>{len(alerts)} of your tracked fund(s) just crossed a new 5% band vs base.</p>"
+        f"{alert_banner}"
         "<table style=\"border-collapse:collapse;border:1px solid #e0e0e0;"
-        "font-size:14px;margin:12px 0;\">"
+        "font-size:14px;margin:12px 0;width:100%;\">"
         f"<thead>{header}</thead><tbody>{''.join(rows)}</tbody>"
         "</table>"
-        "<p style=\"color:#666;font-size:12px;\">You won't hear from me again on these "
-        "funds until the next 5% band is crossed.</p>"
         "<p style=\"color:#666;font-size:12px;\">&mdash; Fund watcher</p>"
         "</body></html>"
     )
@@ -297,6 +328,7 @@ def main() -> int:
 
     state = load_state()
     alerts = []
+    all_funds = []
     rows = []
 
     for fund in FUNDS:
@@ -331,20 +363,25 @@ def main() -> int:
         band_str = f"{step * 5}%"
         status = ""
 
+        fund_data = {
+            "name": name,
+            "fund_id": fund_id,
+            "change": change,
+            "nav": nav,
+            "base": base,
+            "band_pct": step * 5,
+            "nav_date": info["nav_date"],
+        }
+        all_funds.append(fund_data)
+
         if prev_step is None:
             state[fund_id] = step
             status = "NEW"
         elif step != prev_step and abs(step) >= 1:
             status = "ALERT"
             alerts.append({
-                "name": name,
-                "fund_id": fund_id,
-                "change": change,
-                "nav": nav,
-                "base": base,
-                "band_pct": step * 5,
+                **fund_data,
                 "prev_band_pct": prev_step * 5,
-                "nav_date": info["nav_date"],
             })
             state[fund_id] = step
         elif step != prev_step:
@@ -371,17 +408,17 @@ def main() -> int:
     log.info(sep)
     log.info("")
 
-    if alerts:
-        subject, text_body, html_body = build_email(alerts)
+    if all_funds:
+        subject, text_body, html_body = build_email(all_funds, alerts)
         sent = send_gmail(subject, text_body, html_body)
         if sent:
-            log.info(f"Alert email sent ({len(alerts)} fund(s) crossed a band)")
+            log.info(f"Daily email sent (alerts: {len(alerts)})")
         else:
-            log.warning(f"Alerts triggered but email skipped ({len(alerts)} fund(s))")
+            log.warning("Email skipped (credentials not set)")
         for a in alerts:
             log.info(f"  ALERT: {a['name']} {a['change'] * 100:+.2f}% -> {a['band_pct']}% band")
     else:
-        log.info("No new band crossings.")
+        log.warning("No fund data collected; skipping email.")
 
     save_state(state)
     log.info("State saved. Done.")
