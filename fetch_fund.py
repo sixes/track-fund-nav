@@ -8,6 +8,7 @@ import os
 import re
 import smtplib
 import sys
+import time
 from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
@@ -335,24 +336,35 @@ def main() -> int:
         fund_id = fund["id"]
         base = fund["base"]
         name = fund["name"]
-        try:
-            info = fetch_fund(session, fund)
-        except Exception as exc:
-            log.error(f"{name} ({fund_id}): fetch failed: {exc}")
-            rows.append((name, fund_id, "ERR", "-", "-", "-", "-"))
+        info = None
+        for attempt in range(1, 4):
+            try:
+                info = fetch_fund(session, fund)
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                log.warning(f"{name} ({fund_id}): timeout (attempt {attempt}/3): {exc}")
+                if attempt == 3:
+                    log.error(f"{name} ({fund_id}): fetch failed after 3 retries: {exc}")
+                else:
+                    time.sleep(5)
+            except Exception as exc:
+                log.error(f"{name} ({fund_id}): fetch failed: {exc}")
+                break
+        if info is None:
+            rows.append((name, fund_id, "ERR", "-", "-", "-", "-", "ERR"))
             continue
 
         nav_str = info["nav"]
         if not nav_str:
             log.warning(f"{name} ({fund_id}): NAV is None")
-            rows.append((name, fund_id, "N/A", "-", "-", "-", info["nav_date"] or "-"))
+            rows.append((name, fund_id, "N/A", "-", "-", "-", info["nav_date"] or "-", "N/A"))
             continue
 
         try:
             nav = float(nav_str)
         except ValueError:
             log.error(f"{name} ({fund_id}): cannot parse NAV {nav_str!r}")
-            rows.append((name, fund_id, nav_str, "-", "-", "-", info["nav_date"] or "-"))
+            rows.append((name, fund_id, nav_str, "-", "-", "-", info["nav_date"] or "-", "ERR"))
             continue
 
         change = (nav - base) / base
