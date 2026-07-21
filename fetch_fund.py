@@ -20,6 +20,7 @@ from lxml import html
 
 MORNINGSTAR_BASE = "https://zlglobal.morningstar.cn"
 EASTMONEY_GZ = "http://fundgz.1234567.com.cn/js/{code}.js"
+EASTMONEY_PINGZHONG = "http://fund.eastmoney.com/pingzhongdata/{code}.js"
 
 FUNDS = [
     {
@@ -105,6 +106,7 @@ MORNINGSTAR_NAV_XPATH = '//*[@id="fundInfo"]/tbody/tr[2]/td[1]/span'
 MORNINGSTAR_DATE_XPATH = '//*[@id="fundInfo"]/tbody/tr[4]/td[1]'
 JSONP_RE = re.compile(r"jsonpgz\((\{.*\})\)")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+NETWORTH_RE = re.compile(r"Data_netWorthTrend\s*=\s*(\[.*?\]);", re.DOTALL)
 
 
 def fetch_morningstar(session: requests.Session, fund: dict) -> dict:
@@ -135,10 +137,31 @@ def fetch_eastmoney_gz(session: requests.Session, fund: dict) -> dict:
     )
     resp.raise_for_status()
     match = JSONP_RE.search(resp.text)
+    if match:
+        payload = json.loads(match.group(1))
+        if payload.get("dwjz"):
+            return {"nav": payload.get("dwjz"), "nav_date": payload.get("jzrq")}
+    return fetch_eastmoney_pingzhongdata(session, fund)
+
+
+def fetch_eastmoney_pingzhongdata(session: requests.Session, fund: dict) -> dict:
+    resp = session.get(
+        EASTMONEY_PINGZHONG.format(code=fund["id"]),
+        headers={"Referer": "http://fund.eastmoney.com/"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    match = NETWORTH_RE.search(resp.text)
     if not match:
         return {"nav": None, "nav_date": None}
-    payload = json.loads(match.group(1))
-    return {"nav": payload.get("dwjz"), "nav_date": payload.get("jzrq")}
+    entries = json.loads(match.group(1))
+    if not entries:
+        return {"nav": None, "nav_date": None}
+    last = entries[-1]
+    ts = last.get("x")
+    nav = last.get("y")
+    nav_date = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d") if ts else None
+    return {"nav": str(nav) if nav is not None else None, "nav_date": nav_date}
 
 
 def fetch_eastmoney_html(session: requests.Session, fund: dict) -> dict:
