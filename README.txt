@@ -76,8 +76,11 @@ Installed at 18:00 daily (after HK market NAV publication):
 Email format
 ------------
 - Subject: "Fund NAV update: GF nasdaq100 +12.7%, BocPru SP500 +11.2%"
-- Body: HTML table with columns: Fund, Change vs base, Latest NAV, Base,
-  Band crossed (e.g. "5% -> 10%"), NAV date.
+- Body: HTML table with columns: Fund, Change vs base, Daily %, Latest NAV,
+  Base, Band crossed (e.g. "5% -> 10%"), NAV date.
+- Daily % is the day-over-day NAV change: exact for Morningstar Global funds
+  (from their price series) and derived from the previous run's stored NAV for
+  other sources (shows "-" on a fund's first run).
 - Positive moves shown in green with triangle-up; negative in red with
   triangle-down.
 - Plain-text fallback included for clients that don't render HTML.

@@ -212,8 +212,13 @@ def fetch_morningstar_global(session: requests.Session, fund: dict) -> dict:
     if not entries:
         return {"nav": None, "nav_date": None}
     ts, nav = entries[-1]
+    prev_nav = entries[-2][1] if len(entries) >= 2 else None
     nav_date = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d") if ts else None
-    return {"nav": str(nav) if nav is not None else None, "nav_date": nav_date}
+    return {
+        "nav": str(nav) if nav is not None else None,
+        "nav_date": nav_date,
+        "prev_nav": prev_nav,
+    }
 
 
 SOURCES = {
@@ -236,6 +241,7 @@ def fetch_fund(session: requests.Session, fund: dict) -> dict:
         "name": fund["name"],
         "nav": info["nav"],
         "nav_date": nav_date,
+        "prev_nav": info.get("prev_nav"),
     }
 
 
@@ -304,9 +310,11 @@ def build_email(all_funds: list, alerts: list) -> tuple:
         text_lines.append("")
     text_lines.append("All funds:")
     for f in all_funds:
+        daily = f.get("daily_change")
+        daily_txt = f"{daily * 100:+.2f}%" if daily is not None else "-"
         text_lines.append(
             f"  {f['name']} ({f['fund_id']}): NAV {f['nav']}  "
-            f"change {f['change'] * 100:+.2f}%  band {f['band_pct']}%  "
+            f"change {f['change'] * 100:+.2f}%  daily {daily_txt}  band {f['band_pct']}%  "
             f"date {f['nav_date']}"
         )
     text_body = "\n".join(text_lines)
@@ -336,6 +344,20 @@ def build_email(all_funds: list, alerts: list) -> tuple:
         is_alert = f["fund_id"] in alert_ids
         bg = "background:#fff8e1;" if is_alert else ""
         alert_badge = " &#9888;" if is_alert else ""
+        daily = f.get("daily_change")
+        if daily is None:
+            daily_cell = (
+                "<td style=\"padding:8px 12px;border-bottom:1px solid #eee;"
+                "color:#999;\">&mdash;</td>"
+            )
+        else:
+            dpct = daily * 100
+            dcolor = "#137333" if dpct >= 0 else "#c5221f"
+            darrow = "&#9650;" if dpct >= 0 else "&#9660;"
+            daily_cell = (
+                f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:{dcolor};"
+                f"font-weight:600;white-space:nowrap;\">{darrow} {dpct:+.2f}%</td>"
+            )
         rows.append(
             f"<tr style=\"{bg}\">"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\"><b>{f['name']}</b>"
@@ -343,6 +365,7 @@ def build_email(all_funds: list, alerts: list) -> tuple:
             f"<div style=\"color:#666;font-size:12px;\">{f['fund_id']}</div></td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:{color};"
             f"font-weight:600;white-space:nowrap;\">{arrow} {pct:+.2f}%</td>"
+            f"{daily_cell}"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{f['nav']}</td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{f['base']}</td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{f['band_pct']}%</td>"
@@ -355,6 +378,7 @@ def build_email(all_funds: list, alerts: list) -> tuple:
         "text-transform:uppercase;letter-spacing:0.5px;color:#555;\">"
         "<th style=\"padding:8px 12px;\">Fund</th>"
         "<th style=\"padding:8px 12px;\">Change vs base</th>"
+        "<th style=\"padding:8px 12px;\">Daily %</th>"
         "<th style=\"padding:8px 12px;\">Latest NAV</th>"
         "<th style=\"padding:8px 12px;\">Base</th>"
         "<th style=\"padding:8px 12px;\">Band</th>"
@@ -414,27 +438,57 @@ def main() -> int:
                 log.error(f"{name} ({fund_id}): fetch failed: {exc}")
                 break
         if info is None:
-            rows.append((name, fund_id, "ERR", "-", "-", "-", "-", "ERR"))
+            rows.append((name, fund_id, "ERR", "-", "-", "-", "-", "-", "ERR"))
             continue
 
         nav_str = info["nav"]
         if not nav_str:
             log.warning(f"{name} ({fund_id}): NAV is None")
-            rows.append((name, fund_id, "N/A", "-", "-", "-", info["nav_date"] or "-", "N/A"))
+            rows.append((name, fund_id, "N/A", "-", "-", "-", "-", info["nav_date"] or "-", "N/A"))
             continue
 
         try:
             nav = float(nav_str)
         except ValueError:
             log.error(f"{name} ({fund_id}): cannot parse NAV {nav_str!r}")
-            rows.append((name, fund_id, nav_str, "-", "-", "-", info["nav_date"] or "-", "ERR"))
+            rows.append((name, fund_id, nav_str, "-", "-", "-", "-", info["nav_date"] or "-", "ERR"))
             continue
 
         change = (nav - base) / base
         step = band_step(change)
-        prev_step = state.get(fund_id)
+
+        entry = state.get(fund_id)
+        if isinstance(entry, dict):
+            prev_step = entry.get("band")
+            st_nav = entry.get("nav")
+            st_nav_date = entry.get("nav_date")
+            st_prev_nav = entry.get("prev_nav")
+        else:
+            prev_step = entry
+            st_nav = st_nav_date = st_prev_nav = None
+
+        nav_date = info["nav_date"]
+
+        # Daily % change: prefer source-provided previous-day NAV, else the
+        # NAV recorded on a prior run from a strictly older date.
+        daily_change = None
+        prev_nav = None
+        src_prev = info.get("prev_nav")
+        if src_prev not in (None, ""):
+            try:
+                prev_nav = float(src_prev)
+            except (TypeError, ValueError):
+                prev_nav = None
+        if prev_nav is None:
+            if st_nav is not None and st_nav_date and st_nav_date != nav_date:
+                prev_nav = float(st_nav)
+            elif st_prev_nav is not None:
+                prev_nav = float(st_prev_nav)
+        if prev_nav:
+            daily_change = (nav - prev_nav) / prev_nav
 
         change_str = f"{change * 100:+.2f}%"
+        daily_str = f"{daily_change * 100:+.2f}%" if daily_change is not None else "-"
         band_str = f"{step * 5}%"
         status = ""
 
@@ -442,15 +496,15 @@ def main() -> int:
             "name": name,
             "fund_id": fund_id,
             "change": change,
+            "daily_change": daily_change,
             "nav": nav,
             "base": base,
             "band_pct": step * 5,
-            "nav_date": info["nav_date"],
+            "nav_date": nav_date,
         }
         all_funds.append(fund_data)
 
         if prev_step is None:
-            state[fund_id] = step
             status = "NEW"
         elif step != prev_step and abs(step) >= 1:
             status = "ALERT"
@@ -458,17 +512,27 @@ def main() -> int:
                 **fund_data,
                 "prev_band_pct": prev_step * 5,
             })
-            state[fund_id] = step
         elif step != prev_step:
-            state[fund_id] = step
             status = "OK"
         else:
             status = "OK"
 
-        rows.append((name, fund_id, f"{nav:.4f}", f"{base:.4f}", change_str, band_str, info["nav_date"] or "-", status))
+        # Roll NAV history forward only when a new nav_date arrives.
+        if st_nav is not None and st_nav_date and st_nav_date != nav_date:
+            new_prev_nav = st_nav
+        else:
+            new_prev_nav = st_prev_nav
+        state[fund_id] = {
+            "band": step,
+            "nav": nav,
+            "nav_date": nav_date,
+            "prev_nav": new_prev_nav,
+        }
+
+        rows.append((name, fund_id, f"{nav:.4f}", f"{base:.4f}", change_str, daily_str, band_str, nav_date or "-", status))
 
     # Pretty table output
-    headers = ("Fund", "ID", "NAV", "Base", "Change", "Band", "Date", "Status")
+    headers = ("Fund", "ID", "NAV", "Base", "Change", "Daily", "Band", "Date", "Status")
     col_widths = [max(len(str(row[i])) for row in rows + [headers]) for i in range(len(headers))]
     sep = "+-" + "-+-".join("-" * w for w in col_widths) + "-+"
     header_line = "| " + " | ".join(h.ljust(w) for h, w in zip(headers, col_widths)) + " |"
