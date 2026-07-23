@@ -9,7 +9,7 @@ import re
 import smtplib
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Optional
@@ -21,6 +21,7 @@ from lxml import html
 MORNINGSTAR_BASE = "https://zlglobal.morningstar.cn"
 EASTMONEY_GZ = "http://fundgz.1234567.com.cn/js/{code}.js"
 EASTMONEY_PINGZHONG = "http://fund.eastmoney.com/pingzhongdata/{code}.js"
+MORNINGSTAR_GLOBAL_TS = "https://tools.morningstar.co.uk/api/rest.svc/timeseries_price/t92wz0sj7c"
 
 FUNDS = [
     {
@@ -84,6 +85,20 @@ FUNDS = [
         "name": "FullgoalDivY",
         "source": "eastmoney_gz",
         "base": 0.9795,
+    },
+    {
+        "id": "0P00000AWU",
+        "name": "BLK World Tech",
+        "source": "morningstar_global",
+        "base": 163.23,
+        "currency": "USD",
+    },
+    {
+        "id": "0P00000S19",
+        "name": "JPM US Tech",
+        "source": "morningstar_global",
+        "base": 82.72,
+        "currency": "USD",
     },
 ]
 
@@ -177,10 +192,35 @@ def fetch_eastmoney_html(session: requests.Session, fund: dict) -> dict:
     }
 
 
+def fetch_morningstar_global(session: requests.Session, fund: dict) -> dict:
+    currency = fund.get("currency", "USD")
+    universe = fund.get("universe", "FOGBR$$ALL")
+    end = datetime.now()
+    start = end - timedelta(days=30)
+    params = {
+        "currencyId": currency,
+        "idtype": "Morningstar",
+        "frequency": "daily",
+        "startDate": start.strftime("%Y-%m-%d"),
+        "endDate": end.strftime("%Y-%m-%d"),
+        "outputType": "COMPACTJSON",
+        "id": f"{fund['id']}]2]1]{universe}",
+    }
+    resp = session.get(MORNINGSTAR_GLOBAL_TS, params=params, timeout=30)
+    resp.raise_for_status()
+    entries = resp.json()
+    if not entries:
+        return {"nav": None, "nav_date": None}
+    ts, nav = entries[-1]
+    nav_date = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d") if ts else None
+    return {"nav": str(nav) if nav is not None else None, "nav_date": nav_date}
+
+
 SOURCES = {
     "morningstar": fetch_morningstar,
     "eastmoney_gz": fetch_eastmoney_gz,
     "eastmoney_html": fetch_eastmoney_html,
+    "morningstar_global": fetch_morningstar_global,
 }
 
 

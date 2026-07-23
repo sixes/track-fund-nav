@@ -38,6 +38,8 @@ HK0000615697    BocPru SP500        Morningstar
 019314          HKConnect           Eastmoney GZ
 012860          EFund500            Eastmoney GZ
 022903          FullgoalDivY        Eastmoney GZ
+0P00000AWU      BLK World Tech      Morningstar Global (USD)
+0P00000S19      JPM US Tech         Morningstar Global (USD)
 
 Setup
 -----
@@ -87,11 +89,13 @@ Add an entry to the FUNDS list in fetch_fund.py:
     {
         "id": "XXXXXX",
         "name": "Friendly name",
-        "source": "eastmoney_gz",   # or "morningstar" / "eastmoney_html"
+        "source": "eastmoney_gz",   # or "morningstar" / "eastmoney_html" / "morningstar_global"
         "base": 1.2345,             # your cost basis
     }
 
 For "eastmoney_html" source, also supply "nav_xpath" and "date_xpath".
+For "morningstar_global" source, "id" is the Morningstar SecId (e.g. 0P00000AWU);
+optionally set "currency" (default "USD") and "universe" (default "FOGBR$$ALL").
 
 Delete the fund's key from state.json (or the whole file) to re-initialize
 its band tracking on the next run.
