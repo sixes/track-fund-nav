@@ -21,7 +21,7 @@ from lxml import html
 MORNINGSTAR_BASE = "https://zlglobal.morningstar.cn"
 EASTMONEY_GZ = "http://fundgz.1234567.com.cn/js/{code}.js"
 EASTMONEY_PINGZHONG = "http://fund.eastmoney.com/pingzhongdata/{code}.js"
-MORNINGSTAR_GLOBAL_TS = "https://tools.morningstar.co.uk/api/rest.svc/timeseries_price/t92wz0sj7c"
+MORNINGSTAR_GLOBAL_TS = "https://lt.morningstar.com/api/rest.svc/timeseries_price/t92wz0sj7c"
 
 FUNDS = [
     {
