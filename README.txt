@@ -27,19 +27,22 @@ requirements.txt    Python dependencies.
 
 Tracked funds
 -------------
-ID              Name                Source
-HK0001026985    Efund nasdaq100     Morningstar
-HK0000615697    BocPru SP500        Morningstar
-021778          GF nasdaq100        Eastmoney GZ
-018967          99fund nasdaq100    Eastmoney GZ
-023918          FCF                 Eastmoney GZ
-005125          SP Div              Eastmoney HTML
-019548          CMB Nasdaq100       Eastmoney GZ
-019314          HKConnect           Eastmoney GZ
-012860          EFund500            Eastmoney GZ
-022903          FullgoalDivY        Eastmoney GZ
-0P00000AWU      BLK World Tech      Morningstar Global (USD)
-0P00000S19      JPM US Tech         Morningstar Global (USD)
+Tables (console + email) are sorted by tracking index, then fund name.
+
+Index           ID              Name                Source
+Free Cash Flow  023918          FCF                 Eastmoney GZ
+Global Tech     0P00000AWU      BLK World Tech      Morningstar Global (USD)
+Global Tech     0P00000S19      JPM US Tech         Morningstar Global (USD)
+HK Connect      019314          HKConnect           Eastmoney GZ
+Nasdaq 100      HK0001026985    Efund nasdaq100     Morningstar
+Nasdaq 100      021778          GF nasdaq100        Eastmoney GZ
+Nasdaq 100      539001          CCB nasdaq100       Eastmoney GZ
+Nasdaq 100      018967          99fund nasdaq100    Eastmoney GZ
+Nasdaq 100      019548          CMB Nasdaq100       Eastmoney GZ
+S&P 500         HK0000615697    BocPru SP500        Morningstar
+S&P 500         012860          EFund500            Eastmoney GZ
+S&P Dividend    005125          SP Div              Eastmoney HTML
+S&P Dividend    022903          FullgoalDivY        Eastmoney GZ
 
 Setup
 -----
@@ -76,8 +79,9 @@ Installed at 18:00 daily (after HK market NAV publication):
 Email format
 ------------
 - Subject: "Fund NAV update: GF nasdaq100 +12.7%, BocPru SP500 +11.2%"
-- Body: HTML table with columns: Fund, Change vs base, Daily %, Latest NAV,
-  Base, Band crossed (e.g. "5% -> 10%"), NAV date.
+- Body: HTML table with columns: Fund, Change vs base, Daily %, vs ATH,
+  Latest NAV, ATH NAV, Base, Band, NAV date, Index. Rows are grouped by
+  tracking index.
 - Daily % is the day-over-day NAV change: exact for Morningstar Global funds
   (from their price series) and derived from the previous run's stored NAV for
   other sources (shows "-" on a fund's first run).
@@ -91,6 +95,7 @@ Add an entry to the FUNDS list in fetch_fund.py:
 
     {
         "id": "XXXXXX",
+        "index": "Nasdaq 100",     # tracking index, used for table sorting
         "name": "Friendly name",
         "source": "eastmoney_gz",   # or "morningstar" / "eastmoney_html" / "morningstar_global"
         "base": 1.2345,             # your cost basis

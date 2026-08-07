@@ -26,42 +26,49 @@ MORNINGSTAR_GLOBAL_TS = "https://lt.morningstar.com/api/rest.svc/timeseries_pric
 FUNDS = [
     {
         "id": "HK0001026985",
+        "index": "Nasdaq 100",
         "name": "Efund nasdaq100",
         "source": "morningstar",
         "base": 11.92,
     },
     {
         "id": "HK0000615697",
+        "index": "S&P 500",
         "name": "BocPru SP500",
         "source": "morningstar",
         "base": 2.74,
     },
     {
         "id": "021778",
+        "index": "Nasdaq 100",
         "name": "GF nasdaq100",
         "source": "eastmoney_gz",
         "base": 7.2360,
     },
     {
         "id": "539001",
+        "index": "Nasdaq 100",
         "name": "CCB nasdaq100",
         "source": "eastmoney_gz",
         "base": 3.5888,
     },
     {
         "id": "018967",
+        "index": "Nasdaq 100",
         "name": "99fund nasdaq100",
         "source": "eastmoney_gz",
         "base": 1.3747,
     },
     {
         "id": "023918",
+        "index": "Free Cash Flow",
         "name": "FCF",
         "source": "eastmoney_gz",
         "base": 1.3738,
     },
     {
         "id": "005125",
+        "index": "S&P Dividend",
         "name": "SP Div",
         "source": "eastmoney_html",
         "base": 1.827,
@@ -70,30 +77,35 @@ FUNDS = [
     },
     {
         "id": "019548",
+        "index": "Nasdaq 100",
         "name": "CMB Nasdaq100",
         "source": "eastmoney_gz",
         "base": 1.3717,
     },
     {
         "id": "019314",
+        "index": "HK Connect",
         "name": "HKConnect",
         "source": "eastmoney_gz",
         "base": 1.1601,
     },
     {
         "id": "012860",
+        "index": "S&P 500",
         "name": "EFund500",
         "source": "eastmoney_gz",
         "base": 2.8157,
     },
     {
         "id": "022903",
+        "index": "S&P Dividend",
         "name": "FullgoalDivY",
         "source": "eastmoney_gz",
         "base": 0.9795,
     },
     {
         "id": "0P00000AWU",
+        "index": "Global Tech",
         "name": "BLK World Tech",
         "source": "morningstar_global",
         "base": 163.23,
@@ -101,6 +113,7 @@ FUNDS = [
     },
     {
         "id": "0P00000S19",
+        "index": "Global Tech",
         "name": "JPM US Tech",
         "source": "morningstar_global",
         "base": 82.72,
@@ -337,7 +350,7 @@ def build_email(all_funds: list, alerts: list) -> tuple:
         text_lines.append(
             f"  {f['name']} ({f['fund_id']}): NAV {f['nav']}  "
             f"change {f['change'] * 100:+.2f}%  daily {daily_txt}  band {f['band_pct']}%  "
-            f"date {f['nav_date']}  {ath_txt}"
+            f"date {f['nav_date']}  {ath_txt}  [{f['index']}]"
         )
         text_lines.append(f"    {f['url']}")
     text_body = "\n".join(text_lines)
@@ -419,6 +432,8 @@ def build_email(all_funds: list, alerts: list) -> tuple:
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{f['base']}</td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">{f['band_pct']}%</td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;\">{f['nav_date']}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:#666;"
+            f"white-space:nowrap;\">{f['index']}</td>"
             "</tr>"
         )
 
@@ -434,6 +449,7 @@ def build_email(all_funds: list, alerts: list) -> tuple:
         "<th style=\"padding:8px 12px;\">Base</th>"
         "<th style=\"padding:8px 12px;\">Band</th>"
         "<th style=\"padding:8px 12px;\">NAV date</th>"
+        "<th style=\"padding:8px 12px;\">Index</th>"
         "</tr>"
     )
 
@@ -470,10 +486,11 @@ def main() -> int:
     all_funds = []
     rows = []
 
-    for fund in FUNDS:
+    for fund in sorted(FUNDS, key=lambda f: (f["index"], f["name"])):
         fund_id = fund["id"]
         base = fund["base"]
         name = fund["name"]
+        index_name = fund["index"]
         info = None
         for attempt in range(1, 4):
             try:
@@ -489,20 +506,20 @@ def main() -> int:
                 log.error(f"{name} ({fund_id}): fetch failed: {exc}")
                 break
         if info is None:
-            rows.append((name, fund_id, "-", "-", "-", "ERR", "-", "-", "-", "-", "ERR"))
+            rows.append((name, fund_id, "-", "-", "-", "ERR", "-", "-", "-", "-", "ERR", index_name))
             continue
 
         nav_str = info["nav"]
         if not nav_str:
             log.warning(f"{name} ({fund_id}): NAV is None")
-            rows.append((name, fund_id, "-", "-", "-", "N/A", "-", "-", "-", info["nav_date"] or "-", "N/A"))
+            rows.append((name, fund_id, "-", "-", "-", "N/A", "-", "-", "-", info["nav_date"] or "-", "N/A", index_name))
             continue
 
         try:
             nav = float(nav_str)
         except ValueError:
             log.error(f"{name} ({fund_id}): cannot parse NAV {nav_str!r}")
-            rows.append((name, fund_id, "-", "-", "-", nav_str, "-", "-", "-", info["nav_date"] or "-", "ERR"))
+            rows.append((name, fund_id, "-", "-", "-", nav_str, "-", "-", "-", info["nav_date"] or "-", "ERR", index_name))
             continue
 
         change = (nav - base) / base
@@ -549,6 +566,7 @@ def main() -> int:
         status = ""
 
         fund_data = {
+            "index": index_name,
             "name": name,
             "fund_id": fund_id,
             "change": change,
@@ -601,10 +619,11 @@ def main() -> int:
             band_str,
             nav_date or "-",
             status,
+            index_name,
         ))
 
     # Pretty table output
-    headers = ("Fund", "ID", "Change", "Daily", "ATH %", "NAV", "ATH", "Base", "Band", "Date", "Status")
+    headers = ("Fund", "ID", "Change", "Daily", "ATH %", "NAV", "ATH", "Base", "Band", "Date", "Status", "Index")
     col_widths = [max(len(str(row[i])) for row in rows + [headers]) for i in range(len(headers))]
     sep = "+-" + "-+-".join("-" * w for w in col_widths) + "-+"
     header_line = "| " + " | ".join(h.ljust(w) for h, w in zip(headers, col_widths)) + " |"
