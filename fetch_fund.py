@@ -43,6 +43,12 @@ FUNDS = [
         "base": 7.2360,
     },
     {
+        "id": "539001",
+        "name": "CCB nasdaq100",
+        "source": "eastmoney_gz",
+        "base": 3.5888,
+    },
+    {
         "id": "018967",
         "name": "99fund nasdaq100",
         "source": "eastmoney_gz",
@@ -228,6 +234,19 @@ SOURCES = {
     "morningstar_global": fetch_morningstar_global,
 }
 
+MORNINGSTAR_GLOBAL_QUOTE = (
+    "https://global.morningstar.com/en-gb/investments/funds/{code}/quote"
+)
+
+
+def fund_url(fund: dict) -> str:
+    source = fund["source"]
+    if source == "morningstar":
+        return f"{MORNINGSTAR_BASE}/FundDetail/Overview?id={fund['id']}"
+    if source == "morningstar_global":
+        return MORNINGSTAR_GLOBAL_QUOTE.format(code=fund["id"])
+    return f"http://fund.eastmoney.com/{fund['id']}.html"
+
 
 def fetch_fund(session: requests.Session, fund: dict) -> dict:
     handler = SOURCES[fund["source"]]
@@ -320,6 +339,7 @@ def build_email(all_funds: list, alerts: list) -> tuple:
             f"change {f['change'] * 100:+.2f}%  daily {daily_txt}  band {f['band_pct']}%  "
             f"date {f['nav_date']}  {ath_txt}"
         )
+        text_lines.append(f"    {f['url']}")
     text_body = "\n".join(text_lines)
 
     # HTML
@@ -385,7 +405,9 @@ def build_email(all_funds: list, alerts: list) -> tuple:
             )
         rows.append(
             f"<tr style=\"{bg}\">"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\"><b>{f['name']}</b>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;\">"
+            f"<a href=\"{f['url']}\" style=\"color:#1a73e8;text-decoration:none;\">"
+            f"<b>{f['name']}</b></a>"
             f"{alert_badge}"
             f"<div style=\"color:#666;font-size:12px;\">{f['fund_id']}</div></td>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid #eee;color:{color};"
@@ -537,6 +559,7 @@ def main() -> int:
             "nav_date": nav_date,
             "ath_nav": ath_nav,
             "ath_change": ath_change,
+            "url": fund_url(fund),
         }
         all_funds.append(fund_data)
 
